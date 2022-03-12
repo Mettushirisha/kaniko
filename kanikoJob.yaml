@@ -1,0 +1,78 @@
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: kaniko-jobbuild
+    spec:
+      ttlSecondsAfterFinished: 600
+      backoffLimit: 4
+      template:
+        spec:
+          securityContext:
+                runAsUser: 1000
+          imagePullSecrets:
+           - name: imagepullsecrte
+          nodeName: Host
+          initContainers:
+          - name: maven-clone1
+            image: repo/maven:latest
+            command: ["/bin/bash", "-c"]
+            args:
+            - |
+              git clone -b master git@github.com:Org/Repo1 /tmp/Devopsbuildworkspace
+              cd /tmp/Devopsbuildworkspace; ls -lart
+              echo "done"
+              sleep 10
+            volumeMounts:
+            - name: jenkins-pvc
+              mountPath: /tmp/Devopsbuildworkspace
+          - name: maven-clone2
+            image: repo/maven:latest
+            command: ["/bin/bash", "-c"]
+            args:
+            - |
+              git clone -b master git@github.com:Org/Repo2 /tmp/Developerbuildworkspace
+              cd /tmp/Developerbuildworkspace; ls -lart
+              echo "done"
+              sleep 10
+            volumeMounts:
+            - name: jenkins-pvc
+              mountPath: /tmp/Developerbuildworkspace
+          containers:
+          - name: kaniko-build
+            image: repo/kaniko-project/executor:debug
+            args: ["--dockerfile=/tmp/Devopsbuildworkspace/resources/Spring-Dockerfile",
+                    "--context=/tmp/Developerbuildworkspace",
+                    "--no-push",
+                    "--verbosity=debug",
+                    "--tarPath=/tmp/Developerbuildworkspace/test.tar"]
+            volumeMounts:
+            - name: jenkins-pvc
+              mountPath: /tmp/.m2
+            - name: jenkins-pvc
+              mountPath: /tmp/Devopsbuildworkspace
+            - name: jenkins-pvc
+              mountPath: /tmp/Developerbuildworkspace
+            - name: jenkins-pvc
+              mountPath: /tmp/Kanikolog
+          securityContext:
+            runAsUser: 0
+          securityContext:
+            allowPrivilegeEscalation: false
+            resources:
+              limits:
+                memory: 2048Mi
+                cpu: "1"
+              requests:
+                memory: 2048Mi
+                cpu: "1"
+          restartPolicy: Never
+          volumes:
+            - name: docker-config
+              projected:
+                sources:
+                - secret:
+                    name: regcred
+                    items:
+                      - key: .dockerconfigjson
+                        path: config.json
+            - name: jenkins-pvc
